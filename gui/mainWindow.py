@@ -16,18 +16,22 @@ from objectgui.gui.fileTab import FileTab
 
 import objectgui.gui.ui.ui_MainWindow as ui_MainWindow
 
-from objectgui.core.objectTree import ObjectTree
+from objectgui.core.fileNode import FileNode
 
 
+# TODO prevent the user frome saving a tab as a filename of another open tab
+# TODO let the user know if the file selected in "open recent" can't be found
 class MainWindow(QMainWindow, ui_MainWindow.Ui_MainWindow):
     recentlyOpenedSave = 'data/recentlyOpened.json'
     lastPathSave = 'data/lastPath.json'
+    fileTabCls = FileTab
 
 
     def __init__(self, parent=None, icon=None):
         super().__init__(parent)
         self.setupUi(self)
         self.connectSignalSlots()
+        self.actions = {}
 
         if icon is None:
             icon = QtGui.QIcon(util.iconPath('icons', 'icon32x32'))
@@ -38,6 +42,22 @@ class MainWindow(QMainWindow, ui_MainWindow.Ui_MainWindow):
         self.loadRecentlyOpened()
         self.loadLastPath()
         
+
+    def addAction(self, action: QAction, slotName: str):
+        """ Adds a new action to the application.
+
+        Tabs are in charge of enabling and disabling actions as appropriate.
+        
+        Args:
+            action: The QAction to add.
+            slotName: The name of the slot in the tab to connect to.
+        """
+        actionName = action.objectName()
+        slot = lambda: getattr(self.activeTab, slotName)()
+        action.triggered.connect(slot)
+        action.enableFlags = {}
+        self.actions[actionName] = action
+
 
     def connectSignalSlots(self):
         # Slots for all the window actions
@@ -70,7 +90,7 @@ class MainWindow(QMainWindow, ui_MainWindow.Ui_MainWindow):
 
 
     def enableTabActions(self):
-        """ Enable the actions that cannot ocur until a tab is created. """
+        """ Enable the actions that cannot ocurr until a tab is created. """
         self.actionSave.setEnabled(True)
         self.actionSave_As.setEnabled(True)
         self.actionSave_All.setEnabled(True)
@@ -89,23 +109,25 @@ class MainWindow(QMainWindow, ui_MainWindow.Ui_MainWindow):
         self.actionUnsuppress.setEnabled(False)
 
 
+    # Tab managment methods
+    # -------------------------------------------------------------------------
     def updateTabNames(self):
-        """ Updates the names of the tabs based on the objectTree names. """
+        """ Updates the names of the tabs based on the fileNode names. """
         fileTabs = self.fileTabs
         for i in range(fileTabs.count()):
             tab = fileTabs.widget(i)
-            fileTabs.setTabText(i, tab.objectTree.name)
+            fileTabs.setTabText(i, tab.fileNode.name)
     
 
-    def createNewTab(self, objectTree):
+    def setupNewTab(self, tab):
         """ Creates a new tab, sets the icon, and makes it the active tab. """
         fileTabs = self.fileTabs
-        tab = self.createFileTab(objectTree)
         # Provide a default location for the save_as dialog for a new file
         tab.lastPath = self.lastPath
-        args = objectTree.iconPath()
-        fileTabs.addTab(tab, QtGui.QIcon(util.iconPath(*args)), objectTree.name)
+        args = tab.fileNode.iconPath()
+        fileTabs.addTab(tab, QtGui.QIcon(util.iconPath(*args)), tab.name)
         fileTabs.setCurrentWidget(tab)
+        tab.saveSuccessful.connect(self.addRecentlyOpened)
 
         # If this is the first tab added, enable save buttons etc.
         if fileTabs.count() == 1:
@@ -120,34 +142,23 @@ class MainWindow(QMainWindow, ui_MainWindow.Ui_MainWindow):
             self.disableTabActions()
     
 
-    def hideEditForm(self):
-        self.activeTab.hideEditObjectWidget()
+    @pyqtSlot()
+    def new(self):
+        """ Create a new file: create a new object tree and add a fileTab. """
+        tab = self.fileTabCls.newFileTab(self.actions)
+        self.setupNewTab(tab)
+    
+
+    @pyqtSlot(int)
+    def closeTabDialog(self, index):
+        """ Open a closed tab dialog if the window has not been saved. """
+        # This will probably be easier to do once the undo functionality is implemented
+        self.closeTab(index)
 
 
-    def createFileTab(self, objectTree):
-        """ Creates the file tab object. 
-        
-        Implement this method in the MainWindow subclass if you subclass the FileTab.
-        """
-        return FileTab(objectTree.name, self, objectTree)
-
-
-    def createNewObjectTree(self):
-        """ Creates a new objectTree. 
-        
-        Implement this method in the MainWindow subclass if you subclass the ObjectTree.
-        """
-        return ObjectTree.newObjectTree(self)
-
-
-    def loadObjectTree(self, filename):
-        """ Creates a new objectTree. 
-        
-        Implement this method in the MainWindow subclass if you subclass the ObjectTree.
-        """
-        return ObjectTree.load(self, filename)
-
-
+    # Saving and loading methods
+    # -------------------------------------------------------------------------
+    @pyqtSlot(str)
     def addRecentlyOpened(self, filename):
         """ Adds a new file to the recently opened files menu. """
         # TODO Check if the file still exists before we add it
@@ -243,7 +254,7 @@ class MainWindow(QMainWindow, ui_MainWindow.Ui_MainWindow):
         fileTabs = self.fileTabs
         for i in range(fileTabs.count()):
             tab = fileTabs.widget(i)
-            if filename == tab.objectTree.filename:
+            if filename == tab.fileNode.filename:
                 fileTabs.setCurrentWidget(tab)
                 return
         
@@ -251,16 +262,8 @@ class MainWindow(QMainWindow, ui_MainWindow.Ui_MainWindow):
         if os.path.exists(os.path.dirname(filename)):
             self.addRecentlyOpened(filename)
             self.lastPath = os.path.dirname(filename)
-            objectTree = self.loadObjectTree(filename)
-            objectTree.filename = filename
-            self.createNewTab(objectTree)
-
-
-    @pyqtSlot()
-    def new(self):
-        """ Create a new file: create a new object tree and add a fileTab. """
-        objectTree = self.createNewObjectTree()
-        self.createNewTab(objectTree)
+            tab = self.fileTabCls.load(filename, self.actions)
+            self.setupNewTab(tab)
 
 
     @pyqtSlot()
@@ -335,13 +338,6 @@ class MainWindow(QMainWindow, ui_MainWindow.Ui_MainWindow):
     def settings(self):
         """ Unsuppress all selected items in the tree. """
         pass
-
-
-    @pyqtSlot(int)
-    def closeTabDialog(self, index):
-        """ Open a closed tab dialog if the window has not been saved. """
-        # This will probably be easier to do once the undo functionality is implemented
-        self.closeTab(index)
 
 
     def closeEvent(self, event):

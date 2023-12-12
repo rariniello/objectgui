@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import pyqtSignal, pyqtSlot
 
-# We must do thi before importing ui_EditObject
+# We must do this before importing ui_EditObject
 #import objectgui.resources_rc
 #sys.modules['resources_rc'] = objectgui.resources_rc
 

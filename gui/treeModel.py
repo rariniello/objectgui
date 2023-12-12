@@ -25,11 +25,12 @@ class DragMimeData(QMimeData):
         super().__init__(*args, **kwargs)
         self.indexes = []
     
+    
     def add_index(self, index):
         """ Adds the given index to the Mime data's indexes list. """
         self.indexes.append(index)
 
-        
+
 class TreeModel(QtCore.QAbstractItemModel):
     # I have no idea how some of this works, just translated the qt example into python
     def __init__(self, objectTree):
@@ -74,15 +75,15 @@ class TreeModel(QtCore.QAbstractItemModel):
             parent = self.rootItem
         else:
             parent = parentInd.internalPointer()
-        return len(parent.children)
+        return parent.numChildren()
 
 
     def columnCount(self, parentInd):
         """ Returns the number of columns for the children of the given parent index. """
         if parentInd.isValid():
-            return parentInd.internalPointer().columnCount()
+            return parentInd.internalPointer().columnCount
         else:
-            return self.objectTree.columnCount()
+            return self.objectTree.columnCount
 
 
     def data(self, index, role):
@@ -97,7 +98,7 @@ class TreeModel(QtCore.QAbstractItemModel):
         item = index.internalPointer()
         # Use index.column for multiple columns
         if role == Qt.DisplayRole:
-            return item.displayData(index.column())
+            return item.getDisplayData(index.column())
         elif role == Qt.DecorationRole:
             args = item.iconPath()
             return QtGui.QIcon(util.iconPath(*args))
@@ -182,7 +183,6 @@ class TreeModel(QtCore.QAbstractItemModel):
             # Use this code if you ever want to extract the actual Mime data
             # encoded_data = data.data('application/x-qabstractitemmodeldatalist')
             # stream = QtCore.QDataStream(encoded_data, QtCore.QIODevice.ReadOnly)
-
             # new_items = []
             # rows = 0
             # while not stream.atEnd():
@@ -215,7 +215,7 @@ class TreeModel(QtCore.QAbstractItemModel):
 
     def moveRows(self, sourceParentInd, sourceRow, count, destinationParentInd, destinationRow):
         """ Moves a item from one parent/row combination to a different parent/row combination. """
-        # Return flase if we try and move an object ontop of itself
+        # Return false if we try and move an object on top of itself
         # This handles issues that occur when multiple rows are selected
         if sourceParentInd == destinationParentInd and sourceRow == destinationRow:
             return False
